@@ -22,6 +22,13 @@
       "when": 1793567800031,
       "tag": "0002_tough_maximus",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1794397524485,
+      "tag": "0003_smooth_dakota_north",
+      "breakpoints": true
     }
   ]
 }

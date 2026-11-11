@@ -1,4 +1,5 @@
-import { index, pgTable, serial, varchar, timestamp, boolean } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { pgTable, serial, varchar, timestamp, boolean, uniqueIndex } from "drizzle-orm/pg-core";
 
 export const users = pgTable(
   "users",
@@ -12,6 +13,8 @@ export const users = pgTable(
     deletedAt: timestamp("deleted_at"),
   },
   (table) => ({
-    emailIndx: index("email_indx").on(table.email),
+    uniqueNonDeletedEmail: uniqueIndex("users_non_deleted_email_unique")
+      .on(table.email)
+      .where(sql`${table.deletedAt} IS NULL`),
   }),
 );
