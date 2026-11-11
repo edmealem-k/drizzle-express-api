@@ -2,6 +2,9 @@ import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 
 const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  throw new Error("JWT_SECRET must be configured before the API starts");
+}
 
 export interface AuthRequest extends Request {
   userId?: number;
@@ -9,16 +12,20 @@ export interface AuthRequest extends Request {
 
 export const requireAuth = (req: AuthRequest, res: Response, next: NextFunction) => {
   const authHeader = req.headers.authorization;
+  const match = /^Bearer\s+(\S+)$/i.exec(authHeader ?? "");
 
-  if (!authHeader?.startsWith("Bearer")) {
+  if (!match) {
     return res.status(401).json({
       message: "No token provided",
     });
   }
 
-  const token = authHeader.split(" ")[1]!;
+  const token = match[1]!;
   try {
-    const decoded = jwt.verify(token, JWT_SECRET!) as unknown as { userId: number };
+    const decoded = jwt.verify(token, JWT_SECRET);
+    if (typeof decoded === "string" || typeof decoded.userId !== "number") {
+      return res.status(401).json({ message: "Invalid or expired token" });
+    }
 
     req.userId = decoded.userId;
 

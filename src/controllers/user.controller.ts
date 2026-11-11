@@ -1,125 +1,159 @@
 import { Request, Response } from "express";
+import bcrypt from "bcryptjs";
+import { and, eq, isNull } from "drizzle-orm";
 import { db } from "../db";
 import { users } from "../db/schema";
-import { eq } from "drizzle-orm";
-import { insertUserSchema } from "../db/schema/validators";
+import {
+  createUserRequestSchema,
+  updateUserRequestSchema,
+  userIdParamSchema,
+} from "../db/schema/validators";
+
+const isUniqueViolation = (error: unknown): boolean =>
+  typeof error === "object" &&
+  error !== null &&
+  "code" in error &&
+  error.code === "23505";
+
+const publicUserFields = {
+  id: users.id,
+  name: users.name,
+  email: users.email,
+  isActive: users.isActive,
+  createdAt: users.createdAt,
+};
 
 export const createUser = async (req: Request, res: Response) => {
-  try {
-    const parsed = insertUserSchema.safeParse(req.body);
-    if (!parsed.success) {
-      res.status(400).json({
-        errors: parsed.error.flatten(),
-      });
-      return;
-    }
-    const { email, name } = parsed.data;
+  const parsed = createUserRequestSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ errors: parsed.error.flatten() });
+  }
 
+  try {
+    const passwordHash = await bcrypt.hash(parsed.data.password, 10);
     const [newUser] = await db
       .insert(users)
       .values({
-        name,
-        email,
+        name: parsed.data.name,
+        email: parsed.data.email,
+        passwordHash,
       })
-      .returning();
+      .onConflictDoNothing()
+      .returning(publicUserFields);
 
-    res.status(201).json(newUser);
-  } catch (error) {
-    res.status(500).json({
-      message: "Error creating user",
-      error,
-    });
+    if (!newUser) {
+      return res.status(409).json({ message: "Email already registered" });
+    }
+
+    return res.status(201).json(newUser);
+  } catch {
+    return res.status(500).json({ message: "Error creating user" });
   }
 };
 
-export const getAllUsers = async (req: Request, res: Response) => {
+export const getAllUsers = async (_req: Request, res: Response) => {
   try {
-    const allUsers = await db.select().from(users);
+    const allUsers = await db
+      .select(publicUserFields)
+      .from(users)
+      .where(and(eq(users.isActive, true), isNull(users.deletedAt)))
+      .orderBy(users.id);
 
-    // await db.query.users.findMany({
-    //   with: {
-    //     posts: true,
-    //   },
-    // });
-
-    res.status(200).json(allUsers);
-  } catch (error) {
-    res.status(500).json({
-      message: "Error getting all users",
-      error,
-    });
+    return res.status(200).json(allUsers);
+  } catch {
+    return res.status(500).json({ message: "Error getting users" });
   }
 };
 
 export const getUserById = async (req: Request, res: Response) => {
+  const parsedId = userIdParamSchema.safeParse(req.params);
+  if (!parsedId.success) {
+    return res.status(400).json({ message: "Invalid user ID" });
+  }
+
   try {
-    const id = Number(req.params.id);
-    const user = await db.select().from(users).where(eq(users.id, id));
+    const [user] = await db
+      .select(publicUserFields)
+      .from(users)
+      .where(
+        and(
+          eq(users.id, parsedId.data.id),
+          eq(users.isActive, true),
+          isNull(users.deletedAt),
+        ),
+      )
+      .limit(1);
 
-    // await db.query.users.findFirst({
-    //   where: (users, ({ eq }) => eq(users.id, id)),
-    //   with: {
-    //     posts: {
-    //       orderBy: (posts, { desc }) => [desc(posts.createdAt)],
-    //     },
-    //   },
-    // });
-
-    if (!user)
-      return res.status(404).json({
-        message: "user not found",
-      });
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
 
     return res.status(200).json(user);
-  } catch (error) {
-    res.status(500).json({
-      message: "Error getting user",
-      error,
-    });
+  } catch {
+    return res.status(500).json({ message: "Error getting user" });
   }
 };
-export const updateUser = async (req: Request, res: Response) => {
-  try {
-    const id = Number(req.params.id);
-    const { name, email } = req.body;
 
+export const updateUser = async (req: Request, res: Response) => {
+  const parsedId = userIdParamSchema.safeParse(req.params);
+  if (!parsedId.success) {
+    return res.status(400).json({ message: "Invalid user ID" });
+  }
+
+  const parsedBody = updateUserRequestSchema.safeParse(req.body);
+  if (!parsedBody.success) {
+    return res.status(400).json({ errors: parsedBody.error.flatten() });
+  }
+
+  const updateValues: { name?: string; email?: string } = {};
+  if (parsedBody.data.name !== undefined) updateValues.name = parsedBody.data.name;
+  if (parsedBody.data.email !== undefined) updateValues.email = parsedBody.data.email;
+
+  try {
     const [updatedUser] = await db
       .update(users)
-      .set({ name, email })
-      .where(eq(users.id, id))
-      .returning();
+      .set(updateValues)
+      .where(and(eq(users.id, parsedId.data.id), isNull(users.deletedAt)))
+      .returning(publicUserFields);
 
-    if (!updatedUser)
-      return res.status(404).json({
-        message: "user not found",
-      });
+    if (!updatedUser) {
+      return res.status(404).json({ message: "User not found" });
+    }
 
     return res.status(200).json(updatedUser);
   } catch (error) {
-    res.status(500).json({
-      message: "Error updating user",
-      error,
-    });
+    if (isUniqueViolation(error)) {
+      return res.status(409).json({ message: "Email already registered" });
+    }
+
+    return res.status(500).json({ message: "Error updating user" });
   }
 };
+
 export const deleteUser = async (req: Request, res: Response) => {
+  const parsedId = userIdParamSchema.safeParse(req.params);
+  if (!parsedId.success) {
+    return res.status(400).json({ message: "Invalid user ID" });
+  }
+
   try {
-    const id = Number(req.params.id);
+    const [deletedUser] = await db
+      .update(users)
+      .set({ deletedAt: new Date(), isActive: false })
+      .where(
+        and(
+          eq(users.id, parsedId.data.id),
+          isNull(users.deletedAt),
+        ),
+      )
+      .returning({ id: users.id });
 
-    const [deletedUser] = await db.delete(users).where(eq(users.id, id)).returning();
+    if (!deletedUser) {
+      return res.status(404).json({ message: "User not found" });
+    }
 
-    if (!deletedUser)
-      return res.status(404).json({
-        message: "user not found",
-      });
-
-    return res.status(204).json({
-      message: "user deleted successfully",
-    });
-  } catch (error) {
-    res.status(500).json({
-      message: "Error deleting user",
-      error,
-    });
+    return res.status(204).end();
+  } catch {
+    return res.status(500).json({ message: "Error deleting user" });
   }
 };
