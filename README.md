@@ -1,19 +1,20 @@
 # Drizzle Express API
 
-A production-grade REST API built with **Express 5**, **TypeScript**, and **Drizzle ORM** connected to **PostgreSQL**.
+A learning-focused REST API for exploring **Drizzle ORM**, **PostgreSQL**, **Express 5**, and **TypeScript** through schemas, migrations, relations, validation, and authentication.
 
 ---
 
 ## Features
 
-- **End-to-End Type Safety**: Inferred TypeScript types across models, query results, and API payloads without code generation.
+- **Inferred Database Types**: TypeScript row and insert types are inferred from Drizzle table definitions; Zod validates untrusted HTTP input at runtime.
 - **Drizzle ORM & PostgreSQL**: High-performance database client using the `postgres` (postgres-js) driver with connection pooling.
 - **Relational & SQL Query Builder**: Nested relationship queries (`db.query`) alongside standard SQL queries (`db.select`).
 - **Data Validation**: Request validation powered by **Zod** and **`drizzle-zod`**.
-- **JWT Authentication**: Secure user registration, password hashing with **bcryptjs**, and bearer token authentication middleware.
+- **JWT Authentication**: Registration and login with request validation, password hashing with **bcryptjs**, and bearer token middleware.
+- **Email Uniqueness & Soft Deletion**: PostgreSQL enforces one non-deleted account per email with a partial unique index; deleted accounts are deactivated and retained.
 - **Automated Migrations**: Schema versioning and migrations managed via **Drizzle Kit**.
 - **Visual DB Management**: Built-in visual database browser with **Drizzle Studio**.
-- **Integration Testing**: Automated API integration tests using **Vitest** and **Supertest** against an isolated test database.
+- **Test Scaffold**: An initial controller test and database reset helper are present; test dependencies/configuration and a stale route import still need attention.
 - **Centralized Error Handling**: Clean, consistent error handling middleware.
 
 ---
@@ -28,7 +29,7 @@ A production-grade REST API built with **Express 5**, **TypeScript**, and **Driz
 - **Database Driver**: [postgres (Postgres.js)](https://github.com/porsager/postgres)
 - **Validation**: [Zod](https://zod.dev/) & [drizzle-zod](https://orm.drizzle.team/docs/zod)
 - **Authentication**: [jsonwebtoken](https://github.com/auth0/node-jsonwebtoken) & [bcryptjs](https://github.com/dcodeIO/bcrypt.js)
-- **Testing**: [Vitest](https://vitest.dev/) & [Supertest](https://github.com/ladjs/supertest)
+- **Testing**: Initial Vitest/Supertest test source exists, but the dependencies and complete test configuration still need to be installed.
 
 ---
 
@@ -51,7 +52,7 @@ drizzle-express-api/
     │   ├── user.controller.ts
     │   └── user.controller.test.ts
     ├── db/                    # Database client & schema definitions
-    │   ├── index.ts           # Drizzle connection instance with pool config
+    │   ├── index.ts           # Drizzle connection using postgres-js
     │   ├── testSetup.ts       # Test DB reset & teardown utilities
     │   └── schema/            # Schema tables, relations, and validators
     │       ├── index.ts       # Schema barrel file
@@ -125,7 +126,7 @@ pnpm db:studio
 | `pnpm db:generate` | `drizzle-kit generate` | Generates incremental SQL migrations |
 | `pnpm db:migrate` | `drizzle-kit migrate` | Applies pending migrations to the database |
 | `pnpm db:studio` | `drizzle-kit studio` | Opens Drizzle Studio in your browser |
-| `pnpm test` | `vitest run` | Runs automated test suite |
+| `pnpm test` | `vitest run` | Test command scaffold; install Vitest/Supertest, fix the test route import, and finish test configuration first |
 
 ---
 
@@ -140,26 +141,23 @@ pnpm db:studio
 ### Users (`/api/users`)
 | Method | Endpoint | Description | Auth Required |
 | :--- | :--- | :--- | :--- |
-| `GET` | `/api/users` | List all active users | No |
-| `GET` | `/api/users/:id` | Get user details by ID | No |
-| `POST` | `/api/users` | Create user directly | No |
-| `PUT` | `/api/users/:id` | Update user details | **Yes** (Bearer Token) |
-| `DELETE` | `/api/users/:id` | Soft delete user | **Yes** (Bearer Token) |
+| `GET` | `/api/users` | List active users without password hashes | **Yes** (Bearer Token) |
+| `GET` | `/api/users/:id` | Get an active user by ID without password hash | **Yes** (Bearer Token) |
+| `POST` | `/api/users` | Create a user from name, email, and password | **Yes** (Bearer Token) |
+| `PATCH` | `/api/users/:id` | Partially update user details | **Yes** (Bearer Token) |
+| `DELETE` | `/api/users/:id` | Soft-delete and deactivate a user | **Yes** (Bearer Token) |
 
 ---
 
 ## Testing
 
-Create a test database `.env.test` file:
+The repository currently has a test script and an initial test file, but Vitest, Supertest, and a complete test configuration are not installed; the test file also imports a route using a stale default export. Before relying on the tests, add those dependencies, fix the import, configure a dedicated test database, and complete the assertions. Do not point a database reset helper at development or production data.
+
+The intended test database configuration is:
 ```env
 DATABASE_URL=postgres://postgres:postgres@localhost:5432/drizzle_express_test
 JWT_SECRET=test_secret_for_vitest_runner_123456
 NODE_ENV=test
-```
-
-Run tests with Vitest:
-```bash
-pnpm test
 ```
 
 ---
